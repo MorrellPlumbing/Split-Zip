@@ -2,7 +2,7 @@
 Imports CommandLine
 
 Module Module1
-    Class options
+    Class Options
         <[Option]("f", "files", Required:=False, [Default]:=100, HelpText:="The maximum number of files to be placed in each output zip file.")>
         Public Property MaxFiles As Integer
 
@@ -56,11 +56,12 @@ Module Module1
         For Each fileName In opts.InputFiles
             Console.WriteLine("Processing {0}", IO.Path.GetFileName(fileName))
             If IO.File.Exists(fileName) Then
-                Dim rezip = New Split_Zip.SplitZip
-                rezip.MaxZipFiles = opts.MaxFiles
-                rezip.MaxZipBytes = opts.MaxSize
-                rezip.OutputFolder = opts.OutputFolder
-                rezip.SourceFilePath = fileName
+                Dim rezip = New Split_Zip.SplitZip With {
+                    .MaxZipFiles = opts.MaxFiles,
+                    .MaxZipBytes = opts.MaxSize,
+                    .OutputFolder = opts.OutputFolder,
+                    .SourceFilePath = fileName
+                }
                 Dim outputfiles = rezip.DestinationFilePaths
                 If outputfiles(0) = fileName Then
                     Console.WriteLine("Original file is not a zip file or already meets limits. Use original file.")

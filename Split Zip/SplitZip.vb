@@ -95,18 +95,18 @@ Public Class SplitZip
         Return retval
     End Function
 
-    Private Sub DeleteTempFiles()
-        If _destinationFilePaths IsNot Nothing Then
-            For Each filepath In _destinationFilePaths
-                If filepath <> _sourceFilePath And IO.File.Exists(filepath) Then
-                    Try
-                        IO.File.Delete(filepath)
-                    Catch
-                    End Try
-                End If
-            Next
-        End If
-    End Sub
+    'Private Sub DeleteTempFiles()
+    '    If _destinationFilePaths IsNot Nothing Then
+    '        For Each filepath In _destinationFilePaths
+    '            If filepath <> _sourceFilePath And IO.File.Exists(filepath) Then
+    '                Try
+    '                    IO.File.Delete(filepath)
+    '                Catch
+    '                End Try
+    '            End If
+    '        Next
+    '    End If
+    'End Sub
 
     '#Region "IDisposable Support"
     '    Private disposedValue As Boolean ' To detect redundant calls

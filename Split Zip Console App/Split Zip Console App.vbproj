@@ -4,6 +4,7 @@
     <OutputType>Exe</OutputType>
     <RootNamespace>Split_Zip_Console_App</RootNamespace>
     <TargetFramework>netcoreapp3.1</TargetFramework>
+    <ApplicationIcon>Resources\ReZip.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
@@ -12,6 +13,22 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Split Zip\Split Zip Class Library.vbproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Update="My Project\Resources.Designer.vb">
+      <DesignTime>True</DesignTime>
+      <AutoGen>True</AutoGen>
+      <DependentUpon>Resources.resx</DependentUpon>
+    </Compile>
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Update="My Project\Resources.resx">
+      <CustomToolNamespace>My.Resources</CustomToolNamespace>
+      <Generator>VbMyResourcesResXFileCodeGenerator</Generator>
+      <LastGenOutput>Resources.Designer.vb</LastGenOutput>
+    </EmbeddedResource>
   </ItemGroup>
 
 </Project>

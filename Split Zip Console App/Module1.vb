@@ -1,7 +1,7 @@
-Imports System.Runtime.CompilerServices
+﻿Imports System.Runtime.CompilerServices
 Imports CommandLine
 
-Module Program
+Module Module1
     Class options
         <[Option]("f", "files", Required:=False, [Default]:=100, HelpText:="The maximum number of files to be placed in each output zip file.")>
         Public Property MaxFiles As Integer
@@ -9,8 +9,11 @@ Module Program
         <[Option]("b", "bytes", Required:=False, [Default]:=300000000, HelpText:="The maximum size in bytes iof each output zip file.")>
         Public Property MaxSize As Integer
 
-        <[Option]("d", "deletesource", Required:=False, HelpText:="True to delete the input file on successfull completion.")>
+        <[Option]("d", "deletesource", Required:=False, HelpText:="Delete the input file on successfull completion.")>
         Public Property DeleteSource As Boolean = False
+
+        <[Option]("w", "wait", Required:=False, HelpText:="Wait for user keypress at end.")>
+        Public Property Wait As Boolean = False
 
         <[Option]("o", "outputFolder", Required:=False, HelpText:="Output folder for the output zip files. If ommitted it uses the source file's folder.")>
         Public Property OutputFolder As String = String.Empty
@@ -76,11 +79,25 @@ Module Program
             End If
             Console.WriteLine(Hyphens)
         Next
+        If opts.Wait Then
+            Console.Write("Press any key ... ")
+            Console.ReadKey()
+        End If
         Return retVal
+    End Function
+
+    Private Function CommandLineErrors(errs As IEnumerable(Of [Error])) As Integer
+        Console.WriteLine("{0} error{1} in command line arguments", errs.Count, IIf(errs.Count = 1, "", "s"))
+        For Each e In errs
+            Console.WriteLine([Enum].GetName(e.Tag.GetType, e.Tag))
+        Next
+        Console.Write("Press any key ... ")
+        Console.ReadKey()
+        Return errs.Count
     End Function
 
     <STAThread>
     Sub Main(args As String())
-        Parser.Default.ParseArguments(Of options)(args).WithParsed(Function(opts As options) SplitFiles(opts)).WithNotParsed(Function(errs As IEnumerable(Of [Error])) 1)
+        Parser.Default.ParseArguments(Of options)(args).WithParsed(Function(opts As options) SplitFiles(opts)).WithNotParsed(Function(errs As IEnumerable(Of [Error])) CommandLineErrors(errs))
     End Sub
 End Module

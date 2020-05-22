@@ -3,11 +3,31 @@ Imports CommandLine
 
 Module Module1
     Class Options
-        <[Option]("f", "files", Required:=False, [Default]:=100, HelpText:="The maximum number of files to be placed in each output zip file.")>
+        <[Option]("f", "files", Required:=False, HelpText:="The maximum number of files to be placed in each output zip file.")>
         Public Property MaxFiles As Integer
+            Get
+                Return My.Settings.MaxFiles
+            End Get
+            Set(value As Integer)
+                If value > 0 Then
+                    My.Settings.MaxFiles = value
+                    My.Settings.Save()
+                End If
+            End Set
+        End Property
 
-        <[Option]("b", "bytes", Required:=False, [Default]:=300000000, HelpText:="The maximum size in bytes iof each output zip file.")>
-        Public Property MaxSize As Integer
+        <[Option]("b", "bytes", Required:=False, HelpText:="The maximum size in bytes iof each output zip file.")>
+        Public Property MaxBytes As Integer
+            Get
+                Return My.Settings.MaxBytes
+            End Get
+            Set(value As Integer)
+                If value > 0 Then
+                    My.Settings.MaxBytes = value
+                    My.Settings.Save()
+                End If
+            End Set
+        End Property
 
         <[Option]("d", "deletesource", Required:=False, HelpText:="Delete the input file on successfull completion.")>
         Public Property DeleteSource As Boolean = False
@@ -35,7 +55,7 @@ Module Module1
         End If
     End Sub
 
-    Private Function SplitFiles(opts As options) As Integer
+    Private Function SplitFiles(opts As Options) As Integer
         Dim retVal As Integer = 0
         Verbose = opts.Verbose
 
@@ -43,7 +63,7 @@ Module Module1
         Echo("Verbose output")
         Hyphens.Echo
         String.Format("Maximum files: {0}", opts.MaxFiles).Echo
-        String.Format("Maximum size:  {0:#,##0} bytes", opts.MaxSize).Echo
+        String.Format("Maximum size:  {0:#,##0} bytes", opts.MaxBytes).Echo
         String.Format("Delete source: {0}", opts.DeleteSource.ToString).Echo
         If String.IsNullOrEmpty(opts.OutputFolder) Then
             String.Format("Output Folder: {0}", "Same as source file").Echo
@@ -58,7 +78,7 @@ Module Module1
             If IO.File.Exists(fileName) Then
                 Dim rezip = New Split_Zip.SplitZip With {
                     .MaxZipFiles = opts.MaxFiles,
-                    .MaxZipBytes = opts.MaxSize,
+                    .MaxZipBytes = opts.MaxBytes,
                     .OutputFolder = opts.OutputFolder,
                     .SourceFilePath = fileName
                 }

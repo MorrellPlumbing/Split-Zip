@@ -109,7 +109,7 @@ Public Class SplitZip
     Private Function DoNotSplitFile(sourcefilepath As String) As IEnumerable(Of String)
         If IO.File.Exists(sourcefilepath) Then
             Dim filename = IO.Path.Combine(OutputFolder, IO.Path.GetFileNameWithoutExtension(sourcefilepath) + "_0.zip")
-            IO.File.Copy(_sourceFilePath, filename, True)
+            IO.File.Copy(sourcefilepath, filename, True)
             Return New List(Of String) From {filename}
         Else
             Throw New IO.FileNotFoundException("File not found.", sourcefilepath)
@@ -124,7 +124,7 @@ Public Class SplitZip
         If IO.File.Exists(sourcefilepath) Then
             Dim filename = IO.Path.Combine(OutputFolder, IO.Path.GetFileNameWithoutExtension(sourcefilepath) + "_0.zip")
             Using target = New ZipFile
-                target.AddEntry(IO.Path.GetFileName(_sourceFilePath), IO.File.ReadAllBytes(sourcefilepath))
+                target.AddEntry(IO.Path.GetFileName(sourcefilepath), IO.File.ReadAllBytes(sourcefilepath))
                 target.Save()
             End Using
             Return New List(Of String) From {filename}

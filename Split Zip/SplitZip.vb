@@ -1,9 +1,24 @@
 Imports Ionic.Zip
 
+''' <summary>
+''' Class for creating multiple smaller zip files from a large zip file.
+''' </summary>
 Public Class SplitZip
+    ''' <summary>
+    ''' Destination folder for the new smaller zip files
+    ''' </summary>
+    ''' <returns></returns>
     Public Property OutputFolder As String = String.Empty
 
+    ''' <summary>
+    ''' Default value of 100 is used as this is the (undocumented) limit of the SharePoint extract folder action for Microsoft Power Automate
+    ''' https://docs.microsoft.com/en-us/connectors/sharepointonline/#extract-folder
+    ''' </summary>
     Private _maxZipFiles As Integer = 100
+    ''' <summary>
+    ''' Maximum number of files in each new zip file
+    ''' </summary>
+    ''' <returns></returns>
     Public Property MaxZipFiles() As Integer
         Get
             Return _maxZipFiles
@@ -12,12 +27,19 @@ Public Class SplitZip
             If value <> _maxZipFiles Then
                 _maxZipFiles = value
                 _destinationFilePaths = Nothing
-                'DeleteTempFiles()
             End If
         End Set
     End Property
 
-    Private _maxZipBytes As Integer = 300000000
+    ''' <summary>
+    ''' Default value of is used as this is the (undocumented) limit of the SharePoint extract folder action for Microsoft Power Automate
+    ''' https://docs.microsoft.com/en-us/connectors/sharepointonline/#extract-folder
+    ''' </summary>
+    Private _maxZipBytes As Integer = 314572800
+    ''' <summary>
+    ''' Maximum number of bytes in each new zip file
+    ''' </summary>
+    ''' <returns></returns>
     Public Property MaxZipBytes() As Integer
         Get
             Return _maxZipBytes
@@ -26,12 +48,15 @@ Public Class SplitZip
             If value <> _maxZipBytes Then
                 _maxZipBytes = value
                 _destinationFilePaths = Nothing
-                'DeleteTempFiles()
             End If
         End Set
     End Property
 
     Private _sourceFilePath As String = String.Empty
+    ''' <summary>
+    ''' The source file to split
+    ''' </summary>
+    ''' <returns></returns>
     Public Property SourceFilePath() As String
         Get
             Return _sourceFilePath
@@ -44,7 +69,6 @@ Public Class SplitZip
                     If OutputFolder = String.Empty Then
                         OutputFolder = IO.Path.GetDirectoryName(value)
                     End If
-                    'DeleteTempFiles()
                 Else
                     Throw New IO.FileNotFoundException("File not found.", value)
                 End If
@@ -53,91 +77,96 @@ Public Class SplitZip
     End Property
 
     Private _destinationFilePaths As List(Of String) = Nothing
+    ''' <summary>
+    ''' Splits large zip files into smaller zip files.
+    ''' Coppies zip files that meet the file and byte size limits.
+    ''' Creates a zip file for non-zip files.
+    ''' WARNING: Overwrites any destination files with extreme prejudice.
+    ''' </summary>
+    ''' <returns>Destination paths of the new smaller zip files</returns>
     Public Function DestinationFilePaths() As IEnumerable(Of String)
         If _destinationFilePaths Is Nothing And IO.File.Exists(_sourceFilePath) Then
             If ZipFile.IsZipFile(_sourceFilePath) Then
                 Using zip = ZipFile.Read(_sourceFilePath)
                     Dim zipFile As New IO.FileInfo(_sourceFilePath)
                     If zipFile.Length <= MaxZipBytes And zip.Count <= MaxZipFiles Then
-                        _destinationFilePaths = New List(Of String) From {_sourceFilePath}
+                        _destinationFilePaths = DoNotSplitFile(_sourceFilePath)
                     Else
-                        _destinationFilePaths = SplitFile(zip.EntriesSorted.ToList)
+                        _destinationFilePaths = SplitFile(zip.EntriesSorted, _sourceFilePath)
                     End If
                 End Using
             Else
-                _destinationFilePaths = New List(Of String) From {_sourceFilePath}
+                _destinationFilePaths = NonZipFile(_sourceFilePath)
             End If
         End If
         Return _destinationFilePaths
     End Function
 
-    Private Function SplitFile(entries As IList(Of ZipEntry), Optional depth As Integer = 0) As IEnumerable(Of String)
-        Dim i As Integer = 0
-        Dim currentSize As Long = 0
-        Dim retval = New List(Of String)
-        Using source = ZipFile.Read(_sourceFilePath)
-            Using target = New ZipFile()
-                Do
-                    Dim entry = entries(i)
-                    target.AddEntry(entry.FileName, entry.OpenReader)
-                    i += 1
-                    currentSize += entry.CompressedSize
-                Loop Until i = entries.Count - 1 Or target.Count >= MaxZipFiles Or currentSize >= MaxZipBytes
-                IO.Directory.CreateDirectory(OutputFolder)
-                Dim filename = IO.Path.Combine(OutputFolder, IO.Path.GetFileNameWithoutExtension(_sourceFilePath) + "_" + CStr(depth) + ".zip")
-                target.Save(filename)
-                retval.Add(filename)
-                If i < entries.Count - 1 Then
-                    retval.AddRange(SplitFile(entries.Skip(i).ToList, depth + 1))
-                End If
-            End Using
-        End Using
-        Return retval
+    ''' <summary>
+    ''' For files that do not need to be split, copies them to the destination folder
+    ''' </summary>
+    ''' <returns>Destination paths of the output files</returns>
+    Private Function DoNotSplitFile(sourcefilepath As String) As IEnumerable(Of String)
+        If IO.File.Exists(sourcefilepath) Then
+            Dim filename = IO.Path.Combine(OutputFolder, IO.Path.GetFileNameWithoutExtension(sourcefilepath) + "_0.zip")
+            IO.File.Copy(_sourceFilePath, filename, True)
+            Return New List(Of String) From {filename}
+        Else
+            Throw New IO.FileNotFoundException("File not found.", sourcefilepath)
+        End If
     End Function
 
-    'Private Sub DeleteTempFiles()
-    '    If _destinationFilePaths IsNot Nothing Then
-    '        For Each filepath In _destinationFilePaths
-    '            If filepath <> _sourceFilePath And IO.File.Exists(filepath) Then
-    '                Try
-    '                    IO.File.Delete(filepath)
-    '                Catch
-    '                End Try
-    '            End If
-    '        Next
-    '    End If
-    'End Sub
+    ''' <summary>
+    ''' For files thar are not a zip file, creates a zip file containing only that file
+    ''' </summary>
+    ''' <returns>Destination paths of the output files</returns>
+    Private Function NonZipFile(sourcefilepath As String) As IEnumerable(Of String)
+        If IO.File.Exists(sourcefilepath) Then
+            Dim filename = IO.Path.Combine(OutputFolder, IO.Path.GetFileNameWithoutExtension(sourcefilepath) + "_0.zip")
+            Using target = New ZipFile
+                target.AddEntry(IO.Path.GetFileName(_sourceFilePath), IO.File.ReadAllBytes(sourcefilepath))
+                target.Save()
+            End Using
+            Return New List(Of String) From {filename}
+        Else
+            Throw New IO.FileNotFoundException("File not found.", sourcefilepath)
+        End If
+    End Function
 
-    '#Region "IDisposable Support"
-    '    Private disposedValue As Boolean ' To detect redundant calls
-
-    '    ' IDisposable
-    '    Protected Overridable Sub Dispose(disposing As Boolean)
-    '        If Not disposedValue Then
-    '            If disposing Then
-    '                ' TODO: dispose managed state (managed objects).
-    '            End If
-
-    '            ' TODO: free unmanaged resources (unmanaged objects) and override Finalize() below.
-    '            DeleteTempFiles()
-    '            ' TODO: set large fields to null.
-    '        End If
-    '        disposedValue = True
-    '    End Sub
-
-    '    ' TODO: override Finalize() only if Dispose(disposing As Boolean) above has code to free unmanaged resources.
-    '    Protected Overrides Sub Finalize()
-    '        '    ' Do not change this code.  Put cleanup code in Dispose(disposing As Boolean) above.
-    '        Dispose(False)
-    '        MyBase.Finalize()
-    '    End Sub
-
-    '    ' This code added by Visual Basic to correctly implement the disposable pattern.
-    '    Public Sub Dispose() Implements IDisposable.Dispose
-    '        ' Do not change this code.  Put cleanup code in Dispose(disposing As Boolean) above.
-    '        Dispose(True)
-    '        ' TODO: uncomment the following line if Finalize() is overridden above.
-    '        GC.SuppressFinalize(Me)
-    '    End Sub
-    '#End Region
+    ''' <summary>
+    ''' Creates a new zip file from the first MaxZipFiles or MaxZipBytes in the entries list
+    ''' Called recursively it works through the entire source zip file
+    ''' If any single file in the archieve is larger than MaxZipBytes it will create a zip file containing only that file
+    ''' </summary>
+    ''' <param name="entries">The list to process</param>
+    ''' <param name="sourcefilepath"></param>
+    ''' <param name="depth">How far into the original file we are - used to create the output file names</param>
+    ''' <returns></returns>
+    Private Function SplitFile(entries As IList(Of ZipEntry), sourcefilepath As String, Optional depth As Integer = 0) As IEnumerable(Of String)
+        If IO.File.Exists(sourcefilepath) Then
+            Dim i As Integer = 0
+            Dim currentSize As Long = 0
+            Dim retval = New List(Of String)
+            Using source = ZipFile.Read(sourcefilepath)
+                Using target = New ZipFile()
+                    Do
+                        Dim entry = entries(i)
+                        target.AddEntry(entry.FileName, entry.OpenReader)
+                        i += 1
+                        currentSize += entry.CompressedSize
+                    Loop Until i = entries.Count - 1 Or target.Count >= MaxZipFiles Or currentSize >= MaxZipBytes
+                    IO.Directory.CreateDirectory(OutputFolder)
+                    Dim filename = IO.Path.Combine(OutputFolder, IO.Path.GetFileNameWithoutExtension(sourcefilepath) + "_" + CStr(depth) + ".zip")
+                    target.Save(filename)
+                    retval.Add(filename)
+                    If i < entries.Count - 1 Then
+                        retval.AddRange(SplitFile(entries.Skip(i).ToList, sourcefilepath, depth + 1))
+                    End If
+                End Using
+            End Using
+            Return retval
+        Else
+            Throw New IO.FileNotFoundException("File not found.", sourcefilepath)
+        End If
+    End Function
 End Class

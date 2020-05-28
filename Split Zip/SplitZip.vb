@@ -1,9 +1,47 @@
-Imports Ionic.Zip
+Imports ionic.zip
+Imports Upload_Class_Library
 
 ''' <summary>
 ''' Class for creating multiple smaller zip files from a large zip file.
 ''' </summary>
 Public Class SplitZip
+    Public Class SplitZipStatus
+        Implements IStatus
+        Public Property SourceFile As String
+        Public Property DestinationFile As String
+        Public Property InnerFileCount As Integer
+        Public Property TotalInnerFileCount As Integer
+        ' ReSharper disable once UnusedMember.Global
+        Public ReadOnly Property ProgressRatio As Single
+            Get
+                If TotalInnerFileCount = 0 Then
+                    Return -1
+                End If
+                Return InnerFileCount / TotalInnerFileCount
+            End Get
+        End Property
+
+        Public ReadOnly Property Message As String Implements IStatus.message
+            Get
+                Return $"Unzipping {IO.Path.GetFileName(SourceFile)}: {InnerFileCount} of {TotalInnerFileCount} remaining."
+            End Get
+        End Property
+    End Class
+
+    Public Class SavingFileStatus
+        Implements IStatus
+        Public Property DestinationFile As String
+        Public ReadOnly Property Message As String Implements IStatus.Message
+            Get
+                Return $"Saving {DestinationFile} ..."
+            End Get
+        End Property
+    End Class
+
+    Private ReadOnly _status As New SplitZipStatus
+
+    Public Event Progress(status As IStatus)
+
     ''' <summary>
     ''' Destination folder for the new smaller zip files
     ''' </summary>
@@ -19,13 +57,13 @@ Public Class SplitZip
     ''' Maximum number of files in each new zip file
     ''' </summary>
     ''' <returns></returns>
-    Public Property MaxZipFiles() As Integer
+    Public Property MaxZipFiles As Integer
         Get
             Return _maxZipFiles
         End Get
-        Set(ByVal value As Integer)
-            If value <> _maxZipFiles Then
-                _maxZipFiles = value
+        Set
+            If Value <> _maxZipFiles Then
+                _maxZipFiles = Value
                 _destinationFilePaths = Nothing
             End If
         End Set
@@ -40,13 +78,13 @@ Public Class SplitZip
     ''' Maximum number of bytes in each new zip file
     ''' </summary>
     ''' <returns></returns>
-    Public Property MaxZipBytes() As Integer
+    Public Property MaxZipBytes As Integer
         Get
             Return _maxZipBytes
         End Get
-        Set(ByVal value As Integer)
-            If value <> _maxZipBytes Then
-                _maxZipBytes = value
+        Set
+            If Value <> _maxZipBytes Then
+                _maxZipBytes = Value
                 _destinationFilePaths = Nothing
             End If
         End Set
@@ -57,20 +95,21 @@ Public Class SplitZip
     ''' The source file to split
     ''' </summary>
     ''' <returns></returns>
-    Public Property SourceFilePath() As String
+    Public Property SourceFilePath As String
         Get
             Return _sourceFilePath
         End Get
-        Set(ByVal value As String)
-            If _sourceFilePath <> value Then
-                If IO.File.Exists(value) Then
-                    _sourceFilePath = value
+        Set
+            If _sourceFilePath <> Value Then
+                If IO.File.Exists(Value) Then
+                    _sourceFilePath = Value
                     _destinationFilePaths = Nothing
                     If OutputFolder = String.Empty Then
-                        OutputFolder = IO.Path.GetDirectoryName(value)
+                        OutputFolder = IO.Path.GetDirectoryName(Value)
                     End If
+                    _status.SourceFile = Value
                 Else
-                    Throw New IO.FileNotFoundException("File not found.", value)
+                    Throw New IO.FileNotFoundException("File not found.", Value)
                 End If
             End If
         End Set
@@ -79,7 +118,7 @@ Public Class SplitZip
     Private _destinationFilePaths As List(Of String) = Nothing
     ''' <summary>
     ''' Splits large zip files into smaller zip files.
-    ''' Coppies zip files that meet the file and byte size limits.
+    ''' Copies zip files that meet the file and byte size limits.
     ''' Creates a zip file for non-zip files.
     ''' WARNING: Overwrites any destination files with extreme prejudice.
     ''' </summary>
@@ -90,13 +129,16 @@ Public Class SplitZip
                 Using zip = ZipFile.Read(_sourceFilePath)
                     Dim zipFile As New IO.FileInfo(_sourceFilePath)
                     If zipFile.Length <= MaxZipBytes And zip.Count <= MaxZipFiles Then
-                        _destinationFilePaths = DoNotSplitFile(_sourceFilePath)
+                        _destinationFilePaths = DoNotSplitFile()
                     Else
-                        _destinationFilePaths = SplitFile(zip.EntriesSorted, _sourceFilePath)
+                        Dim files = zip.EntriesSorted.Where(Function(e) Not e.IsDirectory).ToList
+                        _status.TotalInnerFileCount = files.Count
+                        _status.InnerFileCount = files.Count
+                        _destinationFilePaths = SplitFile(files)
                     End If
                 End Using
             Else
-                _destinationFilePaths = NonZipFile(_sourceFilePath)
+                _destinationFilePaths = NonZipFile()
             End If
         End If
         Return _destinationFilePaths
@@ -106,13 +148,18 @@ Public Class SplitZip
     ''' For files that do not need to be split, copies them to the destination folder
     ''' </summary>
     ''' <returns>Destination paths of the output files</returns>
-    Private Function DoNotSplitFile(sourcefilepath As String) As IEnumerable(Of String)
-        If IO.File.Exists(sourcefilepath) Then
-            Dim filename = IO.Path.Combine(OutputFolder, IO.Path.GetFileNameWithoutExtension(sourcefilepath) + "_0.zip")
-            IO.File.Copy(sourcefilepath, filename, True)
+    Private Function DoNotSplitFile() As IEnumerable(Of String)
+        If IO.File.Exists(SourceFilePath) Then
+            Dim filename = IO.Path.Combine(OutputFolder, IO.Path.GetFileNameWithoutExtension(SourceFilePath) + "_0.zip")
+            _status.DestinationFile = filename
+            _status.TotalInnerFileCount = 1
+            _status.InnerFileCount = 0
+            RaiseEvent Progress(_status)
+            RaiseEvent Progress(New SavingFileStatus With {.DestinationFile = _status.DestinationFile})
+            IO.File.Copy(SourceFilePath, filename, True)
             Return New List(Of String) From {filename}
         Else
-            Throw New IO.FileNotFoundException("File not found.", sourcefilepath)
+            Throw New IO.FileNotFoundException("File not found.", SourceFilePath)
         End If
     End Function
 
@@ -120,53 +167,61 @@ Public Class SplitZip
     ''' For files thar are not a zip file, creates a zip file containing only that file
     ''' </summary>
     ''' <returns>Destination paths of the output files</returns>
-    Private Function NonZipFile(sourcefilepath As String) As IEnumerable(Of String)
-        If IO.File.Exists(sourcefilepath) Then
-            Dim filename = IO.Path.Combine(OutputFolder, IO.Path.GetFileNameWithoutExtension(sourcefilepath) + "_0.zip")
+    Private Function NonZipFile() As IEnumerable(Of String)
+        If IO.File.Exists(SourceFilePath) Then
+            Dim filename = IO.Path.Combine(OutputFolder, IO.Path.GetFileNameWithoutExtension(SourceFilePath) + "_0.zip")
+            _status.DestinationFile = filename
+            _status.TotalInnerFileCount = 1
+            _status.InnerFileCount = 0
+            RaiseEvent Progress(_status)
             Using target = New ZipFile
-                target.AddEntry(IO.Path.GetFileName(sourcefilepath), IO.File.ReadAllBytes(sourcefilepath))
-                target.Save()
+                target.AddEntry(IO.Path.GetFileName(SourceFilePath), IO.File.ReadAllBytes(SourceFilePath))
+                RaiseEvent Progress(New SavingFileStatus With {.DestinationFile = _status.DestinationFile})
+                target.Save(filename)
             End Using
             Return New List(Of String) From {filename}
         Else
-            Throw New IO.FileNotFoundException("File not found.", sourcefilepath)
+            Throw New IO.FileNotFoundException("File not found.", SourceFilePath)
         End If
     End Function
 
     ''' <summary>
     ''' Creates a new zip file from the first MaxZipFiles or MaxZipBytes in the entries list
     ''' Called recursively it works through the entire source zip file
-    ''' If any single file in the archieve is larger than MaxZipBytes it will create a zip file containing only that file
+    ''' If any single file in the archive is larger than MaxZipBytes it will create a zip file containing only that file
     ''' </summary>
     ''' <param name="entries">The list to process</param>
-    ''' <param name="sourcefilepath"></param>
     ''' <param name="depth">How far into the original file we are - used to create the output file names</param>
     ''' <returns></returns>
-    Private Function SplitFile(entries As IList(Of ZipEntry), sourcefilepath As String, Optional depth As Integer = 0) As IEnumerable(Of String)
-        If IO.File.Exists(sourcefilepath) Then
-            Dim i As Integer = 0
+    Private Function SplitFile(entries As IList(Of ZipEntry), Optional depth As Integer = 0) As IEnumerable(Of String)
+        If IO.File.Exists(SourceFilePath) Then
+            Dim i = 0
             Dim currentSize As Long = 0
-            Dim retval = New List(Of String)
-            Using source = ZipFile.Read(sourcefilepath)
+            Dim retVal = New List(Of String)
+            Using unused = ZipFile.Read(SourceFilePath)
                 Using target = New ZipFile()
+                    IO.Directory.CreateDirectory(OutputFolder)
+                    Dim filename = IO.Path.Combine(OutputFolder, IO.Path.GetFileNameWithoutExtension(SourceFilePath) + "_" + CStr(depth) + ".zip")
+                    _status.DestinationFile = filename
                     Do
+                        _status.InnerFileCount -= 1
+                        RaiseEvent Progress(_status)
                         Dim entry = entries(i)
                         target.AddEntry(entry.FileName, entry.OpenReader)
                         i += 1
                         currentSize += entry.CompressedSize
                     Loop Until i = entries.Count - 1 Or target.Count >= MaxZipFiles Or currentSize >= MaxZipBytes
-                    IO.Directory.CreateDirectory(OutputFolder)
-                    Dim filename = IO.Path.Combine(OutputFolder, IO.Path.GetFileNameWithoutExtension(sourcefilepath) + "_" + CStr(depth) + ".zip")
+                    RaiseEvent Progress(New SavingFileStatus With {.DestinationFile = _status.DestinationFile})
                     target.Save(filename)
                     retval.Add(filename)
                     If i < entries.Count - 1 Then
-                        retval.AddRange(SplitFile(entries.Skip(i).ToList, sourcefilepath, depth + 1))
+                        retval.AddRange(SplitFile(entries.Skip(i - 1).ToList, depth + 1))
                     End If
                 End Using
             End Using
             Return retval
         Else
-            Throw New IO.FileNotFoundException("File not found.", sourcefilepath)
+            Throw New IO.FileNotFoundException("File not found.", SourceFilePath)
         End If
     End Function
 End Class
